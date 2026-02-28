@@ -20,6 +20,23 @@ const MIN_LENGTH_FOR_LANG_DETECTION = 50
 // to catch short phrases like "Bonjour!" or "こんにちは")
 export const MIN_LENGTH_FOR_SKIP_LLM_DETECTION = 10
 
+// In-memory cache for translations within the current page session.
+// Avoids IPC round-trips and IndexedDB lookups when the same text is
+// requested again (e.g. after disabling and re-enabling translation).
+export const MAX_MEMORY_CACHE_SIZE = 5000
+export const translationMemoryCache = new Map<string, string>()
+
+function addToMemoryCache(hash: string, translation: string): void {
+  if (translationMemoryCache.size >= MAX_MEMORY_CACHE_SIZE) {
+    // FIFO eviction: remove the oldest entry
+    const firstKey = translationMemoryCache.keys().next().value
+    if (firstKey !== undefined) {
+      translationMemoryCache.delete(firstKey)
+    }
+  }
+  translationMemoryCache.set(hash, translation)
+}
+
 /**
  * Check if text should be skipped based on language detection.
  * Uses LLM detection if enabled, falls back to franc library.
@@ -213,15 +230,30 @@ export async function translateTextCore(options: TranslateTextOptions): Promise<
   // Add extra hash tags for cache differentiation
   hashComponents.push(...extraHashTags)
 
-  return await sendMessage("enqueueTranslateRequest", {
+  const hash = Sha256Hex(...hashComponents)
+
+  // Check in-memory cache first to avoid IPC round-trip and DB lookup
+  const memoryCached = translationMemoryCache.get(hash)
+  if (memoryCached !== undefined) {
+    return memoryCached
+  }
+
+  const result = await sendMessage("enqueueTranslateRequest", {
     text,
     langConfig,
     providerConfig,
     scheduleAt: Date.now(),
-    hash: Sha256Hex(...hashComponents),
+    hash,
     articleTitle,
     articleTextContent,
   })
+
+  // Populate in-memory cache so subsequent requests for the same text are instant
+  if (result) {
+    addToMemoryCache(hash, result)
+  }
+
+  return result
 }
 
 export function validateTranslationConfigAndToast(
