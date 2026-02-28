@@ -21,6 +21,8 @@ pnpm exec nx type-check
 # pnpm exec nx build
 
 # Check if SKIP_FREE_API environment variable is set
+# Default to true because free-api tests require external network access
+SKIP_FREE_API="${SKIP_FREE_API:-true}"
 if [ "$SKIP_FREE_API" = "true" ]; then
   pnpm exec nx test -- --exclude="**/free-api.test.ts"
 else

@@ -282,6 +282,9 @@ importers:
       '@types/jsdom':
         specifier: ^28.0.0
         version: 28.0.0
+      '@types/node':
+        specifier: ^20.19.25
+        version: 20.19.25
       '@types/react':
         specifier: ^19.2.14
         version: 19.2.14
