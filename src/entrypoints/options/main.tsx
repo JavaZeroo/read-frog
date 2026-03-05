@@ -10,12 +10,16 @@ import FrogToast from "@/components/frog-toast"
 import { HelpButton } from "@/components/help-button"
 import { ChartThemeProvider } from "@/components/providers/chart-theme-provider"
 import { ThemeProvider } from "@/components/providers/theme-provider"
+import { RecoveryBoundary } from "@/components/recovery/recovery-boundary"
 import { SidebarProvider } from "@/components/ui/base-ui/sidebar"
+import { TooltipProvider } from "@/components/ui/base-ui/tooltip"
 import { configAtom } from "@/utils/atoms/config"
 import { getLocalConfig } from "@/utils/config/storage"
+import { DEFAULT_CONFIG } from "@/utils/constants/config"
 import { queryClient } from "@/utils/tanstack-query"
 import App from "./app"
 import { AppSidebar } from "./app-sidebar"
+import { SettingsSearch } from "./command-palette/settings-search"
 import "@/assets/styles/theme.css"
 import "./style.css"
 
@@ -34,11 +38,7 @@ async function initApp() {
   const root = document.getElementById("root")!
   root.className = "antialiased bg-background"
 
-  const config = await getLocalConfig()
-
-  if (!config) {
-    throw new Error("Global config is not loaded")
-  }
+  const config = (await getLocalConfig()) ?? DEFAULT_CONFIG
 
   ReactDOM.createRoot(root).render(
     <React.StrictMode>
@@ -49,10 +49,15 @@ async function initApp() {
               <SidebarProvider>
                 <ThemeProvider>
                   <ChartThemeProvider>
-                    <AppSidebar />
-                    <App />
-                    <FrogToast />
-                    <HelpButton />
+                    <TooltipProvider>
+                      <FrogToast />
+                      <RecoveryBoundary>
+                        <AppSidebar />
+                        <App />
+                        <HelpButton />
+                        <SettingsSearch />
+                      </RecoveryBoundary>
+                    </TooltipProvider>
                   </ChartThemeProvider>
                 </ThemeProvider>
               </SidebarProvider>
