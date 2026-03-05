@@ -24,6 +24,26 @@ export function parseBatchResult(result: string): string[] {
   return result.split(BATCH_SEPARATOR).map(t => t.trim())
 }
 
+// In-memory cache for fast repeated lookups within a browser session.
+// Avoids async IndexedDB round-trips when re-enabling translation on the same page.
+export const MAX_MEMORY_CACHE_SIZE = 5000
+export const translationMemoryCache = new Map<string, string>()
+
+function getFromMemoryCache(hash: string): string | undefined {
+  return translationMemoryCache.get(hash)
+}
+
+export function setToMemoryCache(hash: string, translation: string): void {
+  if (translationMemoryCache.size >= MAX_MEMORY_CACHE_SIZE) {
+    // Evict the oldest entry (first inserted) to stay within limits
+    const firstKey = translationMemoryCache.keys().next().value
+    if (firstKey !== undefined) {
+      translationMemoryCache.delete(firstKey)
+    }
+  }
+  translationMemoryCache.set(hash, translation)
+}
+
 async function getOrGenerateSummary(
   title: string,
   textContent: string,
@@ -162,10 +182,16 @@ export async function setUpWebPageTranslationQueue() {
   onMessage("enqueueTranslateRequest", async (message) => {
     const { data: { text, langConfig, providerConfig, scheduleAt, hash, articleTitle, articleTextContent } } = message
 
-    // Check cache first
+    // Check caches: in-memory first (fastest), then persistent DB
     if (hash) {
+      const memoryCached = getFromMemoryCache(hash)
+      if (memoryCached !== undefined) {
+        return memoryCached
+      }
+
       const cached = await db.translationCache.get(hash)
       if (cached) {
+        setToMemoryCache(hash, cached.translation)
         return cached.translation
       }
     }
@@ -193,6 +219,7 @@ export async function setUpWebPageTranslationQueue() {
 
     // Cache the translation result if successful
     if (result && hash) {
+      setToMemoryCache(hash, result)
       await db.translationCache.put({
         key: hash,
         translation: result,
@@ -230,9 +257,16 @@ export async function setUpSubtitlesTranslationQueue() {
   onMessage("enqueueSubtitlesTranslateRequest", async (message) => {
     const { data: { text, langConfig, providerConfig, scheduleAt, hash, videoTitle, subtitlesContext } } = message
 
+    // Check caches: in-memory first (fastest), then persistent DB
     if (hash) {
+      const memoryCached = getFromMemoryCache(hash)
+      if (memoryCached !== undefined) {
+        return memoryCached
+      }
+
       const cached = await db.translationCache.get(hash)
       if (cached) {
+        setToMemoryCache(hash, cached.translation)
         return cached.translation
       }
     }
@@ -257,6 +291,7 @@ export async function setUpSubtitlesTranslationQueue() {
     }
 
     if (result && hash) {
+      setToMemoryCache(hash, result)
       await db.translationCache.put({
         key: hash,
         translation: result,
